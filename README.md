@@ -9,7 +9,6 @@ An adaptive and intelligent motorcycle service reminder app for Indonesian rider
 - 📱 **Responsive Design** - Mobile-friendly interface
 - 🔐 **Firebase Authentication** - Login with email/password or Google
 - ☁️ **Cloud Sync** - Automatic data synchronization with Firebase Realtime Database
-- 📴 **Offline Mode** - Works without login using localStorage
 - 📈 **Visual Progress** - Progress bars for each component
 - 📜 **Service History** - Track all service records with cost details
 - 🎨 **Modern UI** - Minimalist design with Tailwind CSS
@@ -149,7 +148,7 @@ Production files will be in the `dist/` folder.
 - **Icons**: Lucide React
 - **Backend**: Firebase Authentication + Realtime Database
 - **State Management**: React Context API
-- **Storage**: LocalStorage (fallback) + Firebase Realtime Database
+- **Storage**: Firebase Realtime Database
 
 ## 📂 Project Structure
 

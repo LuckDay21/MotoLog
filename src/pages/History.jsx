@@ -159,7 +159,6 @@ export default function History() {
                   {/* Cost */}
                   {log.cost && (
                     <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
-                      <DollarSign size={16} />
                       <span className="font-medium">
                         {formatCurrency(log.cost)}
                       </span>

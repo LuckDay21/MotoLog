@@ -21,24 +21,16 @@ export const MotoLogProvider = ({ children }) => {
   const [motors, setMotors] = useState([]);
   const [serviceLogs, setServiceLogs] = useState([]);
   const [selectedMotorId, setSelectedMotorId] = useState(null);
-  const [initialized, setInitialized] = useState(false);
 
-  // Load data dari Firebase saat user login, atau localStorage jika tidak
+  // Load data dari Firebase saat user login
   useEffect(() => {
-    if (!currentUser && !initialized) {
-      // Jika tidak ada user, load dari localStorage sekali saja
-      const savedMotors = localStorage.getItem("motolog_motors");
-      const savedLogs = localStorage.getItem("motolog_service_logs");
-      const savedSelectedId = localStorage.getItem("motolog_selected_motor");
-
-      setMotors(savedMotors ? JSON.parse(savedMotors) : []);
-      setServiceLogs(savedLogs ? JSON.parse(savedLogs) : []);
-      setSelectedMotorId(savedSelectedId || null);
-      setInitialized(true);
+    if (!currentUser) {
+      // Reset state jika tidak ada user
+      setMotors([]);
+      setServiceLogs([]);
+      setSelectedMotorId(null);
       return;
     }
-
-    if (!currentUser) return;
 
     // Listen to Firebase realtime updates
     const motorsRef = ref(database, `users/${currentUser.uid}/motors`);
@@ -51,12 +43,20 @@ export const MotoLogProvider = ({ children }) => {
     const unsubscribeMotors = onValue(motorsRef, (snapshot) => {
       const data = snapshot.val();
       setMotors(data ? Object.values(data) : []);
-      setInitialized(true);
     });
 
     const unsubscribeLogs = onValue(logsRef, (snapshot) => {
       const data = snapshot.val();
-      setServiceLogs(data ? Object.values(data) : []);
+      if (data) {
+        // Convert object to array, preserve the Firebase key as id
+        const logsArray = Object.entries(data).map(([key, value]) => ({
+          ...value,
+          id: value.id || key, // Use existing id or fallback to Firebase key
+        }));
+        setServiceLogs(logsArray);
+      } else {
+        setServiceLogs([]);
+      }
     });
 
     const unsubscribeSelected = onValue(selectedRef, (snapshot) => {
@@ -69,62 +69,14 @@ export const MotoLogProvider = ({ children }) => {
       unsubscribeLogs();
       unsubscribeSelected();
     };
-  }, [currentUser, initialized]);
+  }, [currentUser]);
 
-  // Save to Firebase saat data berubah (jika user login)
-  useEffect(() => {
-    if (!initialized) return; // Jangan sync sebelum initialized
-
-    if (currentUser) {
-      const motorsRef = ref(database, `users/${currentUser.uid}/motors`);
-      const motorsObj = {};
-      motors.forEach((motor) => {
-        motorsObj[motor.id] = motor;
-      });
-      set(motorsRef, motorsObj).catch((err) => {
-        console.error("Error syncing motors:", err);
-      });
-    } else {
-      // Save to localStorage jika tidak login
-      localStorage.setItem("motolog_motors", JSON.stringify(motors));
-    }
-  }, [motors, currentUser, initialized]);
-
-  useEffect(() => {
-    if (!initialized) return;
-
-    if (currentUser) {
-      const logsRef = ref(database, `users/${currentUser.uid}/serviceLogs`);
-      const logsObj = {};
-      serviceLogs.forEach((log) => {
-        logsObj[log.id] = log;
-      });
-      set(logsRef, logsObj).catch((err) => {
-        console.error("Error syncing logs:", err);
-      });
-    } else {
-      localStorage.setItem("motolog_service_logs", JSON.stringify(serviceLogs));
-    }
-  }, [serviceLogs, currentUser, initialized]);
-
-  useEffect(() => {
-    if (!initialized) return;
-
-    if (currentUser && selectedMotorId) {
-      const selectedRef = ref(
-        database,
-        `users/${currentUser.uid}/selectedMotorId`
-      );
-      set(selectedRef, selectedMotorId).catch((err) => {
-        console.error("Error syncing selected motor:", err);
-      });
-    } else if (selectedMotorId) {
-      localStorage.setItem("motolog_selected_motor", selectedMotorId);
-    }
-  }, [selectedMotorId, currentUser, initialized]);
+  // REMOVE ALL useEffect SYNC - we'll save directly in functions instead
 
   // Add motor to garage
   const addMotor = (motorData) => {
+    if (!currentUser) return;
+
     const template = getMotorTemplate(motorData.brand, motorData.model);
 
     const newMotor = {
@@ -140,11 +92,24 @@ export const MotoLogProvider = ({ children }) => {
       createdAt: new Date().toISOString(),
     };
 
-    setMotors((prev) => [...prev, newMotor]);
+    // Save to Firebase immediately
+    const motorRef = ref(
+      database,
+      `users/${currentUser.uid}/motors/${newMotor.id}`
+    );
+    set(motorRef, newMotor).catch((err) => {
+      console.error("Error saving motor:", err);
+    });
 
     // Auto select jika motor pertama
     if (motors.length === 0) {
-      setSelectedMotorId(newMotor.id);
+      const selectedRef = ref(
+        database,
+        `users/${currentUser.uid}/selectedMotorId`
+      );
+      set(selectedRef, newMotor.id).catch((err) => {
+        console.error("Error saving selected motor:", err);
+      });
     }
 
     return newMotor.id;
@@ -152,25 +117,66 @@ export const MotoLogProvider = ({ children }) => {
 
   // Update motor
   const updateMotor = (motorId, updates) => {
-    setMotors((prev) =>
-      prev.map((motor) =>
-        motor.id === motorId ? { ...motor, ...updates } : motor
-      )
+    if (!currentUser) return;
+
+    const motor = motors.find((m) => m.id === motorId);
+    if (!motor) return;
+
+    const updatedMotor = { ...motor, ...updates };
+    const motorRef = ref(
+      database,
+      `users/${currentUser.uid}/motors/${motorId}`
     );
+    set(motorRef, updatedMotor).catch((err) => {
+      console.error("Error updating motor:", err);
+    });
   };
 
   // Delete motor
   const deleteMotor = (motorId) => {
-    setMotors((prev) => prev.filter((motor) => motor.id !== motorId));
-    setServiceLogs((prev) => prev.filter((log) => log.motorId !== motorId));
+    if (!currentUser) return;
 
+    // Delete motor from Firebase
+    const motorRef = ref(
+      database,
+      `users/${currentUser.uid}/motors/${motorId}`
+    );
+    remove(motorRef).catch((err) => {
+      console.error("Error deleting motor:", err);
+    });
+
+    // Delete all service logs for this motor
+    const logsToDelete = serviceLogs.filter((log) => log.motorId === motorId);
+    logsToDelete.forEach((log) => {
+      const logRef = ref(
+        database,
+        `users/${currentUser.uid}/serviceLogs/${log.id}`
+      );
+      remove(logRef).catch((err) => {
+        console.error("Error deleting service log:", err);
+      });
+    });
+
+    // Update selected motor if needed
     if (selectedMotorId === motorId) {
-      setSelectedMotorId(motors[0]?.id || null);
+      const remainingMotors = motors.filter((m) => m.id !== motorId);
+      const newSelectedId = remainingMotors[0]?.id || null;
+      if (newSelectedId) {
+        const selectedRef = ref(
+          database,
+          `users/${currentUser.uid}/selectedMotorId`
+        );
+        set(selectedRef, newSelectedId).catch((err) => {
+          console.error("Error updating selected motor:", err);
+        });
+      }
     }
   };
 
   // Add service log - INI LOGIC UTAMA ADAPTIVE
   const addServiceLog = (logData) => {
+    if (!currentUser) return;
+
     const {
       motorId,
       odometerKm,
@@ -181,8 +187,11 @@ export const MotoLogProvider = ({ children }) => {
       customComponents,
     } = logData;
 
+    // Generate unique ID menggunakan timestamp + random untuk avoid collision
+    const uniqueId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
     const newLog = {
-      id: Date.now().toString(),
+      id: uniqueId,
       motorId,
       odometerKm,
       serviceDate,
@@ -193,112 +202,150 @@ export const MotoLogProvider = ({ children }) => {
       createdAt: new Date().toISOString(),
     };
 
-    setServiceLogs((prev) => [...prev, newLog]);
-
-    // UPDATE MOTOR COMPONENTS - ADAPTIVE LOGIC
-    setMotors((prev) =>
-      prev.map((motor) => {
-        if (motor.id !== motorId) return motor;
-
-        return {
-          ...motor,
-          currentOdometer: odometerKm, // Update odometer
-          components: motor.components.map((comp) => {
-            // Jika komponen ini di-servis, reset timer
-            if (servicedComponents.includes(comp.id)) {
-              return {
-                ...comp,
-                lastServiceKm: odometerKm,
-                nextServiceKm: odometerKm + comp.customInterval,
-              };
-            }
-            // Jika tidak, biarkan jadwal tetap
-            return comp;
-          }),
-        };
-      })
+    // Save log to Firebase immediately
+    const logRef = ref(
+      database,
+      `users/${currentUser.uid}/serviceLogs/${uniqueId}`
     );
+    set(logRef, newLog).catch((err) => {
+      console.error("Error saving log to Firebase:", err);
+    });
+
+    // UPDATE MOTOR COMPONENTS - ADAPTIVE LOGIC and save to Firebase
+    const motor = motors.find((m) => m.id === motorId);
+    if (motor) {
+      const updatedMotor = {
+        ...motor,
+        currentOdometer: odometerKm,
+        components: motor.components.map((comp) => {
+          // Jika komponen ini di-servis, reset timer
+          if (servicedComponents.includes(comp.id)) {
+            return {
+              ...comp,
+              lastServiceKm: odometerKm,
+              nextServiceKm: odometerKm + comp.customInterval,
+            };
+          }
+          // Jika tidak, biarkan jadwal tetap
+          return comp;
+        }),
+      };
+
+      // Save updated motor to Firebase
+      const motorRef = ref(
+        database,
+        `users/${currentUser.uid}/motors/${motorId}`
+      );
+      set(motorRef, updatedMotor).catch((err) => {
+        console.error("Error updating motor:", err);
+      });
+    }
 
     return newLog.id;
   };
 
   // Update service log
   const updateServiceLog = (logId, updates) => {
-    setServiceLogs((prev) =>
-      prev.map((log) => (log.id === logId ? { ...log, ...updates } : log))
+    if (!currentUser) return;
+
+    const log = serviceLogs.find((l) => l.id === logId);
+    if (!log) return;
+
+    const updatedLog = { ...log, ...updates };
+    const logRef = ref(
+      database,
+      `users/${currentUser.uid}/serviceLogs/${logId}`
     );
+    set(logRef, updatedLog).catch((err) => {
+      console.error("Error updating service log:", err);
+    });
+  };
+
+  // Update selected motor
+  const updateSelectedMotorId = (motorId) => {
+    if (!currentUser || !motorId) return;
+
+    const selectedRef = ref(
+      database,
+      `users/${currentUser.uid}/selectedMotorId`
+    );
+    set(selectedRef, motorId).catch((err) => {
+      console.error("Error updating selected motor:", err);
+    });
   };
 
   // Delete service log - dengan recalculate
   const deleteServiceLog = (logId) => {
+    if (!currentUser) return;
+
     // Dapatkan log yang akan dihapus untuk tahu motorId-nya
     const logToDelete = serviceLogs.find((log) => log.id === logId);
     if (!logToDelete) return;
 
     const motorId = logToDelete.motorId;
 
-    // Hapus log dan rebuild dalam satu operasi
-    setServiceLogs((prevLogs) => {
-      const updatedLogs = prevLogs.filter((log) => log.id !== logId);
+    // Delete log dari Firebase
+    const logRef = ref(
+      database,
+      `users/${currentUser.uid}/serviceLogs/${logId}`
+    );
+    remove(logRef).catch((err) => {
+      console.error("Error deleting log from Firebase:", err);
+    });
 
-      // Rebuild motor menggunakan updated logs
-      setMotors((prevMotors) => {
-        const motor = prevMotors.find((m) => m.id === motorId);
-        if (!motor) return prevMotors;
+    // Rebuild motor state
+    const motor = motors.find((m) => m.id === motorId);
+    if (!motor) return;
 
-        // Dapatkan semua logs untuk motor ini, sorted by date (oldest first)
-        const motorLogs = updatedLogs
-          .filter((log) => log.motorId === motorId)
-          .sort((a, b) => new Date(a.serviceDate) - new Date(b.serviceDate));
+    // Dapatkan semua logs untuk motor ini kecuali yang dihapus, sorted by date (oldest first)
+    const motorLogs = serviceLogs
+      .filter((log) => log.motorId === motorId && log.id !== logId)
+      .sort((a, b) => new Date(a.serviceDate) - new Date(b.serviceDate));
 
-        // Reset components ke state awal (dari template)
-        const template = getMotorTemplate(motor.brand, motor.model);
+    // Reset components ke state awal (dari template)
+    const template = getMotorTemplate(motor.brand, motor.model);
+    const initialOdometer = motor.initialOdometer || 0;
 
-        // Gunakan initialOdometer yang tersimpan
-        const initialOdometer = motor.initialOdometer || 0;
+    let rebuiltComponents = template.components.map((comp) => ({
+      ...comp,
+      customInterval: comp.customInterval || comp.interval,
+      lastServiceKm: 0,
+      nextServiceKm: initialOdometer + (comp.customInterval || comp.interval),
+    }));
 
-        let rebuiltComponents = template.components.map((comp) => ({
-          ...comp,
-          customInterval: comp.customInterval || comp.interval, // Preserve custom interval jika ada
-          lastServiceKm: 0,
-          nextServiceKm:
-            initialOdometer + (comp.customInterval || comp.interval),
-        }));
+    let latestOdometer = initialOdometer;
 
-        let latestOdometer = initialOdometer;
+    // Replay semua service logs untuk rebuild state
+    if (motorLogs.length > 0) {
+      latestOdometer = motorLogs[motorLogs.length - 1].odometerKm;
 
-        // Jika ada logs, replay untuk rebuild state
-        if (motorLogs.length > 0) {
-          // Ambil odometer dari log terakhir
-          latestOdometer = motorLogs[motorLogs.length - 1].odometerKm;
-
-          // Replay semua service logs untuk rebuild state
-          motorLogs.forEach((log) => {
-            rebuiltComponents = rebuiltComponents.map((comp) => {
-              if (log.servicedComponents.includes(comp.id)) {
-                return {
-                  ...comp,
-                  lastServiceKm: log.odometerKm,
-                  nextServiceKm: log.odometerKm + comp.customInterval,
-                };
-              }
-              return comp;
-            });
-          });
-        }
-
-        // Return updated motors
-        return prevMotors.map((m) => {
-          if (m.id !== motorId) return m;
-          return {
-            ...m,
-            currentOdometer: latestOdometer,
-            components: rebuiltComponents,
-          };
+      motorLogs.forEach((log) => {
+        rebuiltComponents = rebuiltComponents.map((comp) => {
+          if (log.servicedComponents.includes(comp.id)) {
+            return {
+              ...comp,
+              lastServiceKm: log.odometerKm,
+              nextServiceKm: log.odometerKm + comp.customInterval,
+            };
+          }
+          return comp;
         });
       });
+    }
 
-      return updatedLogs;
+    // Save rebuilt motor to Firebase
+    const updatedMotor = {
+      ...motor,
+      currentOdometer: latestOdometer,
+      components: rebuiltComponents,
+    };
+
+    const motorRef = ref(
+      database,
+      `users/${currentUser.uid}/motors/${motorId}`
+    );
+    set(motorRef, updatedMotor).catch((err) => {
+      console.error("Error updating motor after delete:", err);
     });
   };
 
@@ -367,32 +414,39 @@ export const MotoLogProvider = ({ children }) => {
 
   // Update component custom interval
   const updateComponentInterval = (motorId, componentId, newInterval) => {
-    setMotors((prev) =>
-      prev.map((motor) => {
-        if (motor.id !== motorId) return motor;
+    if (!currentUser) return;
 
-        return {
-          ...motor,
-          components: motor.components.map((comp) => {
-            if (comp.id === componentId) {
-              return {
-                ...comp,
-                customInterval: newInterval,
-                nextServiceKm: comp.lastServiceKm + newInterval,
-              };
-            }
-            return comp;
-          }),
-        };
-      })
+    const motor = motors.find((m) => m.id === motorId);
+    if (!motor) return;
+
+    const updatedMotor = {
+      ...motor,
+      components: motor.components.map((comp) => {
+        if (comp.id === componentId) {
+          return {
+            ...comp,
+            customInterval: newInterval,
+            nextServiceKm: comp.lastServiceKm + newInterval,
+          };
+        }
+        return comp;
+      }),
+    };
+
+    const motorRef = ref(
+      database,
+      `users/${currentUser.uid}/motors/${motorId}`
     );
+    set(motorRef, updatedMotor).catch((err) => {
+      console.error("Error updating component interval:", err);
+    });
   };
 
   const value = {
     motors,
     serviceLogs,
     selectedMotorId,
-    setSelectedMotorId,
+    setSelectedMotorId: updateSelectedMotorId,
     addMotor,
     updateMotor,
     deleteMotor,
