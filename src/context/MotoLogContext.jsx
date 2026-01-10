@@ -442,6 +442,38 @@ export const MotoLogProvider = ({ children }) => {
     });
   };
 
+  // Update multiple component intervals at once
+  const updateMultipleComponentIntervals = (motorId, intervalsMap) => {
+    if (!currentUser) return;
+
+    const motor = motors.find((m) => m.id === motorId);
+    if (!motor) return;
+
+    const updatedMotor = {
+      ...motor,
+      components: motor.components.map((comp) => {
+        // Check if this component has a new interval in the map
+        if (intervalsMap.hasOwnProperty(comp.id)) {
+          const newInterval = intervalsMap[comp.id];
+          return {
+            ...comp,
+            customInterval: newInterval,
+            nextServiceKm: comp.lastServiceKm + newInterval,
+          };
+        }
+        return comp;
+      }),
+    };
+
+    const motorRef = ref(
+      database,
+      `users/${currentUser.uid}/motors/${motorId}`
+    );
+    set(motorRef, updatedMotor).catch((err) => {
+      console.error("Error updating multiple component intervals:", err);
+    });
+  };
+
   const value = {
     motors,
     serviceLogs,
@@ -458,6 +490,7 @@ export const MotoLogProvider = ({ children }) => {
     getNextService,
     getComponentsStatus,
     updateComponentInterval,
+    updateMultipleComponentIntervals,
   };
 
   return (

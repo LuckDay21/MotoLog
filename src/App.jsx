@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { MotoLogProvider } from "./context/MotoLogContext";
 import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
+import Settings from "./pages/Settings";
 import LoginPage from "./pages/LoginPage";
 
 // Protected Route wrapper
@@ -45,6 +46,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <History />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <Settings />
           </ProtectedRoute>
         }
       />

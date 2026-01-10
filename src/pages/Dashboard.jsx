@@ -107,7 +107,11 @@ export default function Dashboard() {
               <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
                 <Bell size={20} />
               </button>
-              <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+              <button
+                onClick={() => navigate("/settings")}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                title="Pengaturan Interval Servis"
+              >
                 <Settings size={20} />
               </button>
               <button
@@ -264,7 +268,10 @@ export default function Dashboard() {
             <History size={24} className="text-blue-600" />
             <span className="font-medium">Riwayat Servis</span>
           </button>
-          <button className="bg-white rounded-lg shadow p-4 hover:bg-gray-50 flex items-center gap-3">
+          <button
+            onClick={() => navigate("/settings")}
+            className="bg-white rounded-lg shadow p-4 hover:bg-gray-50 flex items-center gap-3"
+          >
             <Settings size={24} className="text-blue-600" />
             <span className="font-medium">Pengaturan</span>
           </button>
