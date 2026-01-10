@@ -27,7 +27,7 @@ export const motorTemplates = {
           {
             id: "servis_cvt",
             name: "Pembersihan / Servis CVT",
-            interval: 2000,
+            interval: 10000,
             unit: "km",
           },
           { id: "roller", name: "Ganti Roller", interval: 10000, unit: "km" },
