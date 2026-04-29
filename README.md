@@ -1,4 +1,4 @@
-# MotoLog - Smart Motorcycle Service Reminder 🏍️
+# Moto Log - Smart Motorcycle Service Reminder 🏍️
 
 An adaptive and intelligent motorcycle service reminder app for Indonesian riders.
 
@@ -38,7 +38,6 @@ npm install
 ```
 
 3. Setup Firebase:
-
    - Create a new project at [Firebase Console](https://console.firebase.google.com/)
    - Enable **Authentication** (Email/Password and Google)
    - Enable **Realtime Database**
@@ -198,4 +197,4 @@ Created with ❤️ for Indonesian motorcycle community
 
 ---
 
-**MotoLog** - Never miss a service again! 🏍️✨
+**Moto Log** - Never miss a service again! 🏍️✨
